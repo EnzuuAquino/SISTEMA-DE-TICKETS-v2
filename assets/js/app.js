@@ -66,25 +66,18 @@ function entrarAlSistema() {
 }
 
 function ajustarSidebarPorRol() {
-  let rol = getRolEfectivo();
-  document.querySelectorAll(".nav-item").forEach(i => i.style.display = "flex");
+    const rol = getRolEfectivo();
+    if (!usuarioActual) return;
 
-  // Ocultar sedes para no-admin
-  document.querySelectorAll(".nav-solo-admin").forEach(i => {
-    i.style.display = usuarioActual.rol === "admin" ? "flex" : "none";
-  });
-
-  if (rol === "tecnico") {
-    document.querySelector('[data-pagina="todos-tickets"]').style.display = "none";
-    document.querySelector('[data-pagina="reportes"]').style.display      = "none";
-    document.querySelector('[data-pagina="sedes"]').style.display         = "none";
-  }
-
-  if (rol === "recepcionista") {
-    document.querySelector('[data-pagina="todos-tickets"]').style.display = "none";
-    document.querySelector('[data-pagina="reportes"]').style.display      = "none";
-    document.querySelector('[data-pagina="sedes"]').style.display         = "none";
-  }
+    document.querySelectorAll(".nav-item").forEach(item => {
+        const pagina = item.dataset.pagina;
+        // Si no es admin, ocultamos las secciones sensibles
+        if (usuarioActual.rol !== "admin" && (pagina === "reportes" || pagina === "sedes" || pagina === "todos-tickets")) {
+            item.style.display = "none";
+        } else {
+            item.style.display = "flex";
+        }
+    });
 }
 
 // ══════════════════════════════════
@@ -593,21 +586,28 @@ function dibujarTorta(canvasId, datos) {
   ctx.textBaseline = "middle";
   ctx.fillText(total, cx, cy);
 }
+
 // ══════════════════════════════════
-// TICKETS DEL DEPARTAMENTO
+// TICKETS DEL DEPARTAMENTO (Corregido)
 // ══════════════════════════════════
 function cargarDeptoTickets(filtros = {}) {
   let rol = getRolEfectivo();
 
+  // 1. PRIMERO definimos la base según la sede del usuario
+  let ticketsBase = (usuarioActual && usuarioActual.sedeId)
+    ? TICKETS.filter(t => t.sedeId === usuarioActual.sedeId)
+    : TICKETS;
+
+  // 2. Aplicamos los filtros sobre esa base
   let lista = ticketsBase.filter(t => {
     let coincideTexto  = !filtros.texto  || 
       t.titulo.toLowerCase().includes(filtros.texto) || 
       t.id.toLowerCase().includes(filtros.texto) ||
       (t.tecnico || "").toLowerCase().includes(filtros.texto) ||
       t.descripcion.toLowerCase().includes(filtros.texto);
+    
     let coincideEstado = !filtros.estado || t.estado === filtros.estado;
 
-    // Filtro por fecha Desde
     let coincideDesde = true;
     if (filtros.desde) {
       let desde = new Date(filtros.desde);
@@ -615,7 +615,6 @@ function cargarDeptoTickets(filtros = {}) {
       coincideDesde = new Date(t.creadoEn) >= desde;
     }
 
-    // Filtro por fecha Hasta
     let coincideHasta = true;
     if (filtros.hasta) {
       let hasta = new Date(filtros.hasta);
@@ -625,7 +624,7 @@ function cargarDeptoTickets(filtros = {}) {
 
     return coincideTexto && coincideEstado && coincideDesde && coincideHasta;
   });
-   
+    
   // Orden
   if (filtros.orden === "antiguo") {
     lista.sort((a,b) => new Date(a.creadoEn) - new Date(b.creadoEn));
@@ -638,156 +637,85 @@ function cargarDeptoTickets(filtros = {}) {
     : renderVacio("No hay tickets que coincidan.");
 
   document.getElementById("pagina-depto-tickets").innerHTML = `
-
-    <!-- BARRA DE FILTROS -->
     <div class="filtros-barra">
       <div class="filtros-fila" style="margin-bottom:12px;">
-
         <div class="filtro-grupo filtro-buscar" style="flex:1;">
           <label>Buscar</label>
           <div class="buscador-soluciones" style="margin-bottom:0;">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" id="depto-buscar"
-              placeholder="ID, título, técnico, descripción..."
-              value="${filtros.texto || ''}" />
+            <input type="text" id="depto-buscar" placeholder="ID, título, técnico..." value="${filtros.texto || ''}" />
           </div>
         </div>
-
         <div class="filtro-grupo">
           <label>Estado</label>
-          <select id="depto-estado" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;">
-            <option value=""          ${!filtros.estado              ?"selected":""}>Todos</option>
-            <option value="CREADO"    ${filtros.estado==="CREADO"    ?"selected":""}>Creado</option>
-            <option value="ASIGNADO"  ${filtros.estado==="ASIGNADO"  ?"selected":""}>Asignado</option>
-            <option value="EN_PROCESO"${filtros.estado==="EN_PROCESO"?"selected":""}>En Proceso</option>
-            <option value="CERRADO"   ${filtros.estado==="CERRADO"   ?"selected":""}>Cerrado</option>
-            <option value="ANULADO"   ${filtros.estado==="ANULADO"   ?"selected":""}>Anulado</option>
+          <select id="depto-estado" class="select-custom">
+            <option value="" ${!filtros.estado ? "selected" : ""}>Todos</option>
+            <option value="CREADO" ${filtros.estado==="CREADO"?"selected":""}>Creado</option>
+            <option value="ASIGNADO" ${filtros.estado==="ASIGNADO"?"selected":""}>Asignado</option>
+            <option value="EN_PROCESO" ${filtros.estado==="EN_PROCESO"?"selected":""}>En Proceso</option>
+            <option value="CERRADO" ${filtros.estado==="CERRADO"?"selected":""}>Cerrado</option>
           </select>
         </div>
-
         <div class="filtro-grupo">
-          <label>Orden</label>
-          <select id="depto-orden" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;">
-            <option value="reciente" ${filtros.orden==="reciente"||!filtros.orden?"selected":""}>Descendente (Nuevo → Viejo)</option>
-            <option value="antiguo"  ${filtros.orden==="antiguo"               ?"selected":""}>Ascendente (Viejo → Nuevo)</option>
-          </select>
+           <label>&nbsp;</label>
+           <button class="btn-secondary" id="depto-limpiar">Limpiar</button>
         </div>
-
-        <div class="filtro-grupo" style="justify-content:flex-end;">
-          <label>&nbsp;</label>
-          <button class="btn-secondary" id="depto-limpiar">Limpiar Filtros</button>
-        </div>
-
       </div>
-
       <div class="filtros-fila">
-        <div class="filtro-grupo" style="flex:1;">
-          <label>Desde</label>
-          <input type="date" id="depto-desde"
-            value="${filtros.desde || ''}"
-            style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;width:100%;" />
-        </div>
-        <div class="filtro-grupo" style="flex:1;">
-          <label>Hasta</label>
-          <input type="date" id="depto-hasta"
-            value="${filtros.hasta || ''}"
-            style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;outline:none;width:100%;" />
-        </div>
+        <div class="filtro-grupo" style="flex:1;"><label>Desde</label><input type="date" id="depto-desde" value="${filtros.desde || ''}" class="input-custom" /></div>
+        <div class="filtro-grupo" style="flex:1;"><label>Hasta</label><input type="date" id="depto-hasta" value="${filtros.hasta || ''}" class="input-custom" /></div>
       </div>
     </div>
-
     <p class="resultados-texto">Resultados (${lista.length})</p>
-    <div class="tickets-grid-compacto" id="depto-lista">${listaHTML}</div>
+    <div class="tickets-grid-compacto">${listaHTML}</div>
   `;
-   // Filtrar por sede según el usuario
-  let ticketsBase = usuarioActual.sedeId
-    ? TICKETS.filter(t => t.sedeId === usuarioActual.sedeId)
-    : TICKETS;
 
-  // Función que lee todos los filtros y recarga
-  function aplicar() {
-    cargarDeptoTickets({
-      texto:  document.getElementById("depto-buscar").value.toLowerCase(),
-      estado: document.getElementById("depto-estado").value,
-      orden:  document.getElementById("depto-orden").value,
-      desde:  document.getElementById("depto-desde").value,
-      hasta:  document.getElementById("depto-hasta").value,
+  // Listeners
+  const inputs = ["depto-buscar", "depto-estado", "depto-desde", "depto-hasta"];
+  inputs.forEach(id => {
+    document.getElementById(id).addEventListener("change", () => {
+        cargarDeptoTickets({
+            texto: document.getElementById("depto-buscar").value.toLowerCase(),
+            estado: document.getElementById("depto-estado").value,
+            desde: document.getElementById("depto-desde").value,
+            hasta: document.getElementById("depto-hasta").value
+        });
     });
-  }
-
-  document.getElementById("depto-buscar").addEventListener("input",  aplicar);
-  document.getElementById("depto-estado").addEventListener("change", aplicar);
-  document.getElementById("depto-orden").addEventListener("change",  aplicar);
-  document.getElementById("depto-desde").addEventListener("change",  aplicar);
-  document.getElementById("depto-hasta").addEventListener("change",  aplicar);
-  document.getElementById("depto-limpiar").addEventListener("click", () => cargarDeptoTickets());
+  });
+  document.getElementById("depto-limpiar").onclick = () => cargarDeptoTickets();
 }
+
 // ══════════════════════════════════
-// TODOS LOS TICKETS
+// TODOS LOS TICKETS (Corregido renderTicketCard)
 // ══════════════════════════════════
 function cargarTodosTickets(filtros = {}) {
+  let rol = getRolEfectivo();
   let lista = TICKETS.filter(t => {
-    let coincideTexto     = !filtros.texto     || t.titulo.toLowerCase().includes(filtros.texto) || t.id.includes(filtros.texto);
-    let coincideEstado    = !filtros.estado    || t.estado === filtros.estado;
-    let coincidePrioridad = !filtros.prioridad || t.prioridad === filtros.prioridad;
-    return coincideTexto && coincideEstado && coincidePrioridad;
+    let coincideTexto = !filtros.texto || t.titulo.toLowerCase().includes(filtros.texto) || t.id.includes(filtros.texto);
+    let coincideEstado = !filtros.estado || t.estado === filtros.estado;
+    return coincideTexto && coincideEstado;
   }).slice().reverse();
 
   let listaHTML = lista.length > 0
-    ? lista.map(t => renderTicketCard(t, [{ tipo: "ver" }])).join("")
-    : renderVacio("No hay tickets que coincidan.");
+    ? lista.map(t => renderTicketCardCompacta(t, getBotonesTicket(t, rol))).join("")
+    : renderVacio("No hay tickets.");
 
   document.getElementById("pagina-todos-tickets").innerHTML = `
-    <div class="filtros-barra">
-      <div class="filtros-fila">
-        <div class="filtro-grupo filtro-buscar">
-          <label>Buscar</label>
-          <input type="text" id="todos-buscar" placeholder="ID o descripción..." />
-        </div>
-        <div class="filtro-grupo">
-          <label>Estado</label>
-          <select id="todos-estado">
-            <option value="">Todos</option>
-            <option value="CREADO">Creado</option>
-            <option value="ASIGNADO">Asignado</option>
-            <option value="EN_PROCESO">En Proceso</option>
-            <option value="CERRADO">Cerrado</option>
-            <option value="ANULADO">Anulado</option>
-          </select>
-        </div>
-        <div class="filtro-grupo">
-          <label>Prioridad</label>
-          <select id="todos-prioridad">
-            <option value="">Todas</option>
-            <option value="inmediata">Inmediata</option>
-            <option value="alta">Alta</option>
-            <option value="media">Media</option>
-            <option value="baja">Baja</option>
-          </select>
-        </div>
-        <div class="filtro-grupo">
-          <label>&nbsp;</label>
-          <button class="btn-secondary" id="todos-limpiar">Limpiar</button>
-        </div>
-      </div>
+    <div class="card">
+       <div class="buscador-soluciones">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <input type="text" id="todos-buscar-input" placeholder="Buscar en todo el sistema..." />
+       </div>
+       <div class="tickets-grid-compacto">${listaHTML}</div>
     </div>
-    <p class="resultados-texto">Resultados (${lista.length})</p>
-    <div>${listaHTML}</div>
   `;
-
-  function aplicarFiltros() {
-    cargarTodosTickets({
-      texto:     document.getElementById("todos-buscar").value.toLowerCase(),
-      estado:    document.getElementById("todos-estado").value,
-      prioridad: document.getElementById("todos-prioridad").value,
-    });
-  }
-
-  document.getElementById("todos-buscar").addEventListener("input", aplicarFiltros);
-  document.getElementById("todos-estado").addEventListener("change", aplicarFiltros);
-  document.getElementById("todos-prioridad").addEventListener("change", aplicarFiltros);
-  document.getElementById("todos-limpiar").addEventListener("click", () => cargarTodosTickets());
 }
+
+ function getRolEfectivo() {
+    return window.rolSimulado || (usuarioActual ? usuarioActual.rol : null);
+}
+
+
 
 // ══════════════════════════════════
 // CENTRO DE SOLUCIONES
@@ -2233,116 +2161,33 @@ function renderVistaGlobalSedes() {
   `;
 }
 
+// Busca esta función en tu app.js y reemplázala:
 function renderVistaSede(sedeId) {
-  let sede     = SEDES.find(s => s.id === sedeId);
-  let stats    = getEstadisticasPorSede(sedeId);
-  let tickets  = getTicketsPorSede(sedeId).slice().reverse();
-  let tecnicos = getTecnicosPorSede(sedeId);
+  const sede = SEDES.find(s => s.id === sedeId);
+  if (!sede) return ""; // Retornamos vacío si no hay sede
 
-  let ticketsHTML = tickets.length > 0
-    ? tickets.map(t => renderTicketCard(t, [
-        { tipo: "ver" },
-        ...(!t.tecnico && t.estado === "CREADO" ? [{ tipo: "tomar" }] : []),
-        ...(t.tecnico && t.estado !== "CERRADO" && t.estado !== "ANULADO" ? [{ tipo: "reasignar" }] : []),
-      ])).join("")
-    : renderVacio("No hay tickets en esta sede.");
+  const ticketsSede = TICKETS.filter(t => t.sedeId === sedeId);
+  const rol = getRolEfectivo();
 
+  // Generamos la lista de tickets
+  const listaHTML = ticketsSede.length > 0
+    ? ticketsSede.map(t => renderTicketCardCompacta(t, getBotonesTicket(t, rol))).join("")
+    : `<div class="vacio">No hay tickets en esta sede.</div>`;
+
+  // IMPORTANTE: Solo retornamos el HTML, no usamos document.getElementById aquí
   return `
-    <div style="display:grid;grid-template-columns:1fr 280px;gap:20px;">
-
-      <!-- Columna principal: tickets -->
-      <div>
-        <div class="stats-grid" style="margin-bottom:16px;">
-          <div class="stat-card" style="border-top:3px solid ${sede.color};">
-            <div class="stat-info"><p>Total</p><strong>${stats.total}</strong></div>
-            <div class="stat-icono azul"><i class="fa-solid fa-ticket"></i></div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-info"><p>Pendientes</p><strong>${stats.creados}</strong></div>
-            <div class="stat-icono naranja"><i class="fa-solid fa-clock"></i></div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-info"><p>En Proceso</p><strong>${stats.enProceso}</strong></div>
-            <div class="stat-icono morado"><i class="fa-solid fa-spinner"></i></div>
-          </div>
-          <div class="stat-card">
-            <div class="stat-info"><p>Cerrados</p><strong>${stats.cerrados}</strong></div>
-            <div class="stat-icono verde"><i class="fa-solid fa-circle-check"></i></div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;">
-            Tickets de ${sede.nombre}
-          </h3>
-          ${ticketsHTML}
-        </div>
+    <div class="header-detalle-sede" style="margin-top:20px;">
+      <div class="titulo-sede" style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
+        <span class="punto-sede" style="background:${sede.color}; width:15px; height:15px; border-radius:50%; display:inline-block;"></span>
+        <h2 style="margin:0;">Detalle de ${sede.nombre}</h2>
       </div>
-
-      <!-- Columna derecha: equipo -->
-      <div>
-        <div class="card" style="margin-bottom:16px;border-top:4px solid ${sede.color};">
-          <h3 style="font-size:14px;font-weight:700;margin-bottom:14px;">
-            <i class="fa-solid fa-users" style="color:${sede.color};margin-right:6px;"></i>
-            Equipo de ${sede.nombre}
-          </h3>
-          ${tecnicos.map(u => {
-            let cerrados = TICKETS.filter(t => t.tecnico === u.nombre && t.estado === "CERRADO").length;
-            let activos  = TICKETS.filter(t => t.tecnico === u.nombre &&
-              (t.estado === "ASIGNADO" || t.estado === "EN_PROCESO")).length;
-            return `
-              <div style="display:flex;align-items:center;gap:10px;padding:10px 0;
-                border-bottom:1px solid var(--border);">
-                <div style="width:36px;height:36px;border-radius:50%;background:${sede.color};
-                  color:#fff;display:flex;align-items:center;justify-content:center;
-                  font-weight:700;font-size:14px;flex-shrink:0;">
-                  ${u.nombre.charAt(0)}
-                </div>
-                <div style="flex:1;min-width:0;">
-                  <div style="font-size:13px;font-weight:600;">${u.nombre}</div>
-                  <div style="font-size:11px;color:var(--text-muted);">${u.cargo}</div>
-                </div>
-                <div style="text-align:right;flex-shrink:0;">
-                  <div style="font-size:12px;font-weight:700;color:#f97316;">${activos} activos</div>
-                  <div style="font-size:11px;color:var(--text-muted);">${cerrados} cerrados</div>
-                </div>
-              </div>
-            `;
-          }).join("")}
-        </div>
-
-        <!-- Reasignar tickets entre sedes -->
-        <div class="card" style="background:#eff6ff;border-color:#bfdbfe;">
-          <h3 style="font-size:13px;font-weight:700;margin-bottom:10px;color:#1e40af;">
-            <i class="fa-solid fa-arrows-rotate" style="margin-right:6px;"></i>
-            Reasignar a otra sede
-          </h3>
-          <p style="font-size:12px;color:#3b82f6;margin-bottom:10px;">
-            Mueve tickets de ${sede.nombre} a otra sede.
-          </p>
-          <select id="select-sede-destino" style="width:100%;background:#fff;border:1px solid #bfdbfe;
-            border-radius:8px;padding:8px 12px;font-size:13px;outline:none;margin-bottom:8px;">
-            <option value="">Seleccionar sede destino...</option>
-            ${SEDES.filter(s => s.id !== sedeId).map(s =>
-              `<option value="${s.id}">${s.nombre} — ${s.ciudad}</option>`
-            ).join("")}
-          </select>
-          <select id="select-ticket-reasignar" style="width:100%;background:#fff;border:1px solid #bfdbfe;
-            border-radius:8px;padding:8px 12px;font-size:13px;outline:none;margin-bottom:8px;">
-            <option value="">Seleccionar ticket...</option>
-            ${tickets.filter(t => t.estado !== "CERRADO" && t.estado !== "ANULADO").map(t =>
-              `<option value="${t.id}">#${t.id} — ${t.titulo.substring(0,35)}...</option>`
-            ).join("")}
-          </select>
-          <button class="btn-primary" style="width:100%;" onclick="reasignarTicketSede(${sedeId})">
-            <i class="fa-solid fa-arrows-rotate"></i> Reasignar Ticket
-          </button>
-        </div>
-      </div>
-
+    </div>
+    <div class="tickets-grid-compacto" style="display: grid; gap: 15px;">
+      ${listaHTML}
     </div>
   `;
 }
+
 
 function reasignarTicketSede(sedeOrigenId) {
   let ticketId   = document.getElementById("select-ticket-reasignar").value;
@@ -2374,3 +2219,4 @@ function reasignarTicketSede(sedeOrigenId) {
   toast("exito", "Ticket Reasignado", `#${ticket.id} movido a ${sedeDest.nombre}.`);
   cargarSedes(sedeOrigenId);
 }
+//hasta aqui esta todo ok 
